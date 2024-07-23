@@ -14,6 +14,7 @@ public: // public properties
     glm::vec3 origin;
     glm::vec3 direction;
     glm::vec3 up;
-    
+
+    float nearPlane, farPlane;
     float fovY;
 };

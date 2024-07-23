@@ -34,4 +34,11 @@ add_custom_target(
     ${CMAKE_SOURCE_DIR}/src/shaders ${CMAKE_BINARY_DIR}/shaders
     COMMENT "Copying shader directory."
 )
+add_custom_target(
+    copy_assets
+    ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/assets ${CMAKE_BINARY_DIR}/assets
+    COMMENT "Copying assets."
+)
 add_dependencies(${PROJECT_NAME} copy_shader_files)
+add_dependencies(${PROJECT_NAME} copy_assets)

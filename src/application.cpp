@@ -11,11 +11,20 @@
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
+
+#include <thread>
+
 #define RANDF(MIN, MAX) (static_cast<float>(std::rand()) / (static_cast<float>(RAND_MAX / (MAX - MIN))) + MIN)
 
-Application::Application() 
-    : Window("My window"), imguiInstance(getWindow()), cameraRotation(0.0) {
+Application::Application() : Window("My window"), imguiInstance(getWindow()), cameraRotation(0.0) {
     std::srand(time(nullptr));
+
+    GLFWimage icons[1];
+    icons[0].pixels = stbi_load("assets/appicon.png", &icons[0].width, &icons[0].height, nullptr, 4);
+    glfwSetWindowIcon(getWindow(), 1, icons);
+    stbi_image_free(icons[0].pixels);
 
     glViewport(0, 0, width, height);
 
@@ -28,7 +37,10 @@ Application::Application()
 
     glfwGetCursorPos(getWindow(), &prevMouseX, &prevMouseY);
     
-    cubePositions = generateRandomPositions(1000000, -200.0, 200.0);
+    constexpr size_t cubeCount = 100000;
+
+    cubePositions = generateRandomVectors(cubeCount, -1000.0, 1000.0);
+    cubeVelocities = generateRandomVectors(cubeCount, -10.0, 10.0);
 
     glGenBuffers(1, &instanceVBO);
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
@@ -37,15 +49,15 @@ Application::Application()
 
     cubeMesh = Mesh::createFromVertexArrayInstanced(
     { // vertices
-        -1, -1, -1,
-        1, -1, -1,
-        1, 1, -1,
-        -1, 1, -1,
+        -1, -1, -1, -0.57735026919, -0.57735026919, -0.57735026919,
+        1, -1, -1, 10.57735026919, -0.57735026919, -0.57735026919,
+        1, 1, -1, 10.57735026919, 10.57735026919, -0.57735026919,
+        -1, 1, -1, -0.57735026919, 10.57735026919, -0.57735026919,
         
-        -1, -1, 1,
-        1, -1, 1,
-        1, 1, 1,
-        -1, 1, 1,
+        -1, -1, 1, -0.57735026919, -0.57735026919, 0.57735026919,
+        1, -1, 1, 0.57735026919, -0.57735026919, 0.57735026919,
+        1, 1, 1, 0.57735026919, 0.57735026919, 0.57735026919,
+        -1, 1, 1, -0.57735026919, 0.57735026919, 0.57735026919,
     },
     { // indices
         0, 2, 1,
@@ -86,6 +98,9 @@ void Application::run()
 {
     double prevTime = glfwGetTime();
 
+    std::thread thread(&Application::updateThread, this);
+    LOG_DEBUG("Dispatched update thread");
+
     while(!shouldClose()) {
         pollEvents();
 
@@ -96,6 +111,10 @@ void Application::run()
         update(deltaTime);
         render(deltaTime);
     }
+
+    simCondition.notify_all();
+    thread.join();
+    LOG_DEBUG("Joined update thread");
 }
 
 void Application::resize(int width, int height)
@@ -108,6 +127,12 @@ void Application::resize(int width, int height)
 
 void Application::render(double deltaTime)
 {
+    if(simRunning) {
+        glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * cubePositions->size(), cubePositions->data(), GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     mat->use();
@@ -126,6 +151,17 @@ void Application::render_ui(double deltaTime)
     ImGui::Begin("Stats");
     ImGui::Text("Instance count: %lu", cubePositions->size());
     ImGui::Text("Frametime: %lfms", deltaTime * 1000.0);
+    ImGui::Text("Last Update Tick Time: %fms", lastUpdateTickTime * 1000.0);
+    ImGui::Text("Virtual time passed: %fs", timePassed);
+    ImGui::DragFloat(
+        "Time scale",
+        &timeScale,
+        0.0001, 0.0001, 2.0,
+        "%.4f"
+    );
+    ImGui::End();
+
+    ImGui::Begin("Camera");
     ImGui::DragFloat3(
         "Camera position",
         glm::value_ptr<float>(camera.origin),
@@ -136,12 +172,28 @@ void Application::render_ui(double deltaTime)
         glm::value_ptr<float>(cameraRotation),
         0.01f, -glm::two_pi<float>(), glm::two_pi<float>()
     );
+    ImGui::DragFloat(
+        "Camera speed",
+        &controlSpeed,
+        1.0f, 0.01f, 99999.0f, "%.3f",
+        ImGuiSliderFlags_Logarithmic
+    );
+    ImGui::DragFloat(
+        "Near Plane",
+        &camera.nearPlane,
+        0.01, 0.001, 1.0
+    );
+    ImGui::DragFloat(
+        "Far Plane",
+        &camera.farPlane,
+        100.0, 100.0, 100000.0
+    );
     ImGui::End();
 
     imguiInstance.renderFrame();
 }
 
-std::unique_ptr<std::vector<glm::vec3>> Application::generateRandomPositions(size_t size, float min, float max)
+std::unique_ptr<std::vector<glm::vec3>> Application::generateRandomVectors(size_t size, float min, float max)
 {
     std::unique_ptr<std::vector<glm::vec3>> positions = std::make_unique<std::vector<glm::vec3>>(size);
 
@@ -154,6 +206,44 @@ std::unique_ptr<std::vector<glm::vec3>> Application::generateRandomPositions(siz
     }
 
     return std::move(positions);
+}
+
+void Application::updateThread()
+{
+    double prevTime = glfwGetTime();
+    while(!shouldClose()) {
+        double time = glfwGetTime();
+        double deltaTime = time - prevTime;
+        prevTime = time;
+
+        if(deltaTime > 1.0) deltaTime = 0.0001;
+
+        lastUpdateTickTime = deltaTime;
+        updateDesync(deltaTime * timeScale);
+    }
+}
+
+void Application::updateDesync(double deltaTime)
+{
+    std::unique_lock<std::mutex> lock(simMutex);
+    simCondition.wait(lock);
+
+    for(size_t i = 0; i < cubePositions->size(); i++) {
+        glm::vec3 &position = (*cubePositions)[i];
+        glm::vec3 &velocity = (*cubeVelocities)[i];
+        glm::vec3 heading = 0.0f - position;
+        glm::vec3 gravityVector = 1000000.0f * glm::normalize(heading) / ((float)heading.length() * heading.length());
+        velocity += (
+            glm::vec3(
+                RANDF(-1.0f, 1.0f),
+                RANDF(-1.0f, 1.0f),
+                RANDF(-1.0f, 1.0f)
+            ) * (float)deltaTime * 0.0f + gravityVector * (float)deltaTime
+        );
+        position += velocity * (float)deltaTime;
+    }
+
+    timePassed += deltaTime;
 }
 
 void Application::update(double deltaTime)
@@ -208,9 +298,14 @@ void Application::update(double deltaTime)
 
     if(glfwGetMouseButton(getWindow(), GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
         glfwSetInputMode(getWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        glfwSetInputMode(getWindow(), GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
     } else {
         glfwSetInputMode(getWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        glfwSetInputMode(getWindow(), GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
     }
+
+    if(simRunning)
+        simCondition.notify_all();
 }
 
 void Application::mouseButton(int key, int action, int mod)
@@ -225,6 +320,19 @@ void Application::keyboardCallback(int key, int action, int scancode, int mod)
 
     if(key == GLFW_KEY_F && action == GLFW_PRESS) {
         toggleFullscreen();
+    }
+
+    if(key == GLFW_KEY_U && action == GLFW_PRESS) {
+        wireframeOn = !wireframeOn;
+        glPolygonMode(GL_FRONT_AND_BACK, wireframeOn ? GL_LINE : GL_FILL);
+        if(wireframeOn)
+            glDisable(GL_CULL_FACE);
+        else
+            glEnable(GL_CULL_FACE);
+    }
+
+    if(key == GLFW_KEY_SPACE && action == GLFW_PRESS) {
+        simRunning = !simRunning;
     }
 }
 

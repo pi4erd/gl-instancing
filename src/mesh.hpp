@@ -7,6 +7,7 @@
 
 constexpr int VERTEX_ATTRIBS[] = {
     3, // v_position
+    3, // v_normal
 };
 
 constexpr int INSTANCE_ATTRIBS[] = {
