@@ -35,6 +35,38 @@ void Mesh::drawInstanced(size_t instanceCount)
     glDrawElementsInstanced(GL_TRIANGLES, elementCount, GL_UNSIGNED_INT, nullptr, instanceCount);
 }
 
+std::shared_ptr<Mesh> Mesh::createFromVertexArrayAttrib(const std::vector<float> &vertData, const std::vector<GLuint> &indices, const std::vector<int> attribs)
+{
+    GLuint vbo, vao, ebo;
+    glGenBuffers(1, &vbo);
+    glGenBuffers(1, &ebo);
+    glGenVertexArrays(1, &vao);
+
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertData.size() * sizeof(float), vertData.data(), GL_STATIC_DRAW);
+    
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(GLuint), indices.data(), GL_STATIC_DRAW);
+    
+    size_t offset = 0;
+    size_t sum = 0;
+
+    for(size_t i = 0; i < attribs.size(); i++) {
+        sum += attribs[i];
+    }
+    
+    for(size_t i = 0; i < attribs.size(); i++) {
+        glVertexAttribPointer(i, attribs[i], GL_FLOAT, false, sum * sizeof(float), (void*)(offset * sizeof(float)));
+        glEnableVertexAttribArray(i);
+        offset += attribs[i];
+    }
+
+    glBindVertexArray(0);
+
+    return std::make_shared<Mesh>(vbo, vao, ebo, indices.size());
+}
+
 std::shared_ptr<Mesh> Mesh::createFromVertexArrayInstanced(
     const std::vector<float> &vertData,
     const std::vector<GLuint> &indices,

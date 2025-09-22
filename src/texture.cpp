@@ -5,7 +5,7 @@ Texture::Texture(GLuint handle) : handle(handle) {
     LOG_DEBUG("Created texture {}", handle);
 }
 
-std::shared_ptr<Texture> Texture::createEmpty(GLsizei width, GLsizei height) {
+std::shared_ptr<Texture> Texture::createEmptyStorage(GLsizei width, GLsizei height) {
     GLuint handle;
 
     glGenTextures(1, &handle);
@@ -18,6 +18,13 @@ std::shared_ptr<Texture> Texture::createEmpty(GLsizei width, GLsizei height) {
     glTextureStorage2D(handle, 1, GL_RGBA32F, width, height);
     
     return std::make_shared<Texture>(handle);
+}
+
+void Texture::recreateStorage(GLsizei newWidth, GLsizei newHeight)
+{
+    // Hope this is enough
+    glBindTexture(GL_TEXTURE_2D, handle);
+    glTextureStorage2D(handle, 1, GL_RGBA32F, newWidth, newHeight);
 }
 
 Texture::~Texture() {

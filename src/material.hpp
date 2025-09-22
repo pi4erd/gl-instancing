@@ -18,7 +18,6 @@ struct MaterialProperty {
 class Material {
 public:
     Material(GLuint handle);
-    Material(Material &&other);
     ~Material();
 
     void use();
@@ -48,5 +47,6 @@ public:
     std::shared_ptr<Material> buildMaterial();
     MaterialBuilder attachShader(std::shared_ptr<Shader> shader);
 
+private:
     std::vector<std::shared_ptr<Shader>> attachedShaders;
 };

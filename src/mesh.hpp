@@ -22,10 +22,17 @@ public:
     void draw();
     void drawInstanced(size_t instanceCount);
 
+    static std::shared_ptr<Mesh> createFromVertexArrayAttrib(
+        const std::vector<float> &vertData,
+        const std::vector<GLuint> &indices,
+        const std::vector<int> attribs
+    );
+
     static std::shared_ptr<Mesh> createFromVertexArray(
         const std::vector<float> &vertData,
         const std::vector<GLuint> &indices
     );
+
     static std::shared_ptr<Mesh> createFromVertexArrayInstanced(
         const std::vector<float> &vertData,
         const std::vector<GLuint> &indices,

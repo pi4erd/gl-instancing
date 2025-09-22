@@ -16,7 +16,7 @@
 
 #include <thread>
 
-#define RANDF(MIN, MAX) (static_cast<float>(std::rand()) / (static_cast<float>(RAND_MAX / (MAX - MIN))) + MIN)
+#define RANDF(MIN, MAX) (static_cast<float>(std::rand()) / (static_cast<float>(RAND_MAX) / static_cast<float>(MAX - MIN)) + static_cast<float>(MIN))
 
 Application::Application() : Window("My window"), imguiInstance(getWindow()), cameraRotation(0.0) {
     std::srand(time(nullptr));
@@ -37,14 +37,21 @@ Application::Application() : Window("My window"), imguiInstance(getWindow()), ca
 
     glfwGetCursorPos(getWindow(), &prevMouseX, &prevMouseY);
     
-    constexpr size_t cubeCount = 100000;
+    constexpr size_t cubeCount = 200000;
+    constexpr size_t starCount = 100000;
 
-    cubePositions = generateRandomVectors(cubeCount, -1000.0, 1000.0);
-    cubeVelocities = generateRandomVectors(cubeCount, -10.0, 10.0);
+    cubePositions = generateRandomVectors(cubeCount, -1000.0f, 1000.0f);
+    cubeVelocities = generateRandomVectors(cubeCount, -100.0f, 100.0f);
+    starsPositions = generateRandomVectors(starCount, -100000.0f, 100000.0f);
 
     glGenBuffers(1, &instanceVBO);
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * cubePositions->size(), cubePositions->data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glGenBuffers(1, &starsVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, starsVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * starsPositions->size(), starsPositions->data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     cubeMesh = Mesh::createFromVertexArrayInstanced(
@@ -79,8 +86,45 @@ Application::Application() : Window("My window"), imguiInstance(getWindow()), ca
         1, 5, 4
     }, instanceVBO);
 
+    starMesh = Mesh::createFromVertexArrayInstanced(
+    { // vertices
+        -10, -10, -10, -0.57735026919, -0.57735026919, -0.57735026919,
+        10, -10, -10, 10.57735026919, -0.57735026919, -0.57735026919,
+        10, 10, -10, 10.57735026919, 10.57735026919, -0.57735026919,
+        -10, 10, -10, -0.57735026919, 10.57735026919, -0.57735026919,
+        
+        -10, -10, 10, -0.57735026919, -0.57735026919, 0.57735026919,
+        10, -10, 10, 0.57735026919, -0.57735026919, 0.57735026919,
+        10, 10, 10, 0.57735026919, 0.57735026919, 0.57735026919,
+        -10, 10, 10, -0.57735026919, 0.57735026919, 0.57735026919,
+    },
+    { // indices
+        0, 2, 1,
+        0, 3, 2,
+        
+        5, 7, 4,
+        5, 6, 7,
+
+        0, 4, 3,
+        4, 7, 3,
+
+        1, 2, 5,
+        5, 2, 6,
+
+        2, 3, 6,
+        3, 7, 6,
+
+        0, 1, 4,
+        1, 5, 4
+    }, starsVBO);
+
+    postProcess = std::make_unique<PostProcess>(width, height);
+
     auto vertShader = shaderFromGlslFile("shaders/cube.vert", GL_VERTEX_SHADER);
     auto fragShader = shaderFromGlslFile("shaders/cube.frag", GL_FRAGMENT_SHADER);
+    auto testEffectShader = shaderFromBinaryFile("shaders/testeffect.frag.spv", GL_FRAGMENT_SHADER);
+
+    postProcess->addEffect(0, std::make_unique<Effect>(testEffectShader));
     
     mat = MaterialBuilder()
         .attachShader(vertShader)
@@ -122,23 +166,35 @@ void Application::resize(int width, int height)
     glViewport(0, 0, width, height);
     this->width = width;
     this->height = height;
+
+    postProcess->resize(width, height);
+
     LOG_DEBUG("Resized to {}x{}", width, height);
 }
 
 void Application::render(double deltaTime)
 {
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    
     if(simRunning) {
         glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * cubePositions->size(), cubePositions->data(), GL_STATIC_DRAW);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
 
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    postProcess->beginDraw();
+
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     mat->use();
     mat->uniform4x4("projection_view", camera.projectionMatrix(width / (float)height) * camera.viewMatrix());
     cubeMesh->drawInstanced(cubePositions->size());
-    
+    starMesh->drawInstanced(starsPositions->size());
+    postProcess->endDraw();
+    postProcess->render();
+
     render_ui(deltaTime);
 
     swapBuffers();
@@ -149,7 +205,7 @@ void Application::render_ui(double deltaTime)
     imguiInstance.newFrame();
 
     ImGui::Begin("Stats");
-    ImGui::Text("Instance count: %lu", cubePositions->size());
+    ImGui::Text("Instance count: %lu", cubePositions->size() + starsPositions->size());
     ImGui::Text("Frametime: %lfms", deltaTime * 1000.0);
     ImGui::Text("Last Update Tick Time: %fms", lastUpdateTickTime * 1000.0);
     ImGui::Text("Virtual time passed: %fs", timePassed);
@@ -205,7 +261,7 @@ std::unique_ptr<std::vector<glm::vec3>> Application::generateRandomVectors(size_
         );
     }
 
-    return std::move(positions);
+    return positions;
 }
 
 void Application::updateThread()
@@ -232,7 +288,7 @@ void Application::updateDesync(double deltaTime)
         glm::vec3 &position = (*cubePositions)[i];
         glm::vec3 &velocity = (*cubeVelocities)[i];
         glm::vec3 heading = 0.0f - position;
-        glm::vec3 gravityVector = 1000000.0f * glm::normalize(heading) / ((float)heading.length() * heading.length());
+        glm::vec3 gravityVector = 10000.0f * glm::normalize(heading) / ((float)heading.length() * heading.length());
         velocity += (
             glm::vec3(
                 RANDF(-1.0f, 1.0f),
@@ -310,10 +366,13 @@ void Application::update(double deltaTime)
 
 void Application::mouseButton(int key, int action, int mod)
 {
+    (void)key, (void)action, (void)mod;
 }
 
 void Application::keyboardCallback(int key, int action, int scancode, int mod)
 {
+    (void)scancode, (void)mod;
+
     if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         close();
     }
@@ -338,6 +397,7 @@ void Application::keyboardCallback(int key, int action, int scancode, int mod)
 
 void Application::mouseScroll(double dx, double dy)
 {
+    (void)dx;
     controlSpeed *= 1.0 + dy * 0.1;
 }
 

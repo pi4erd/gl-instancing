@@ -29,14 +29,6 @@ Material::Material(GLuint handle) : program(handle)
     LOG_DEBUG("Constructed material {}", program);
 }
 
-Material::Material(Material &&other)
-{
-    LOG_DEBUG("Copied material");
-
-    uniforms = other.uniforms;
-    program = other.program;
-}
-
 Material::~Material()
 {
     glDeleteProgram(program);

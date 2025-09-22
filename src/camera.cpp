@@ -6,8 +6,8 @@
 #include <glm/gtc/constants.hpp>
 
 Camera::Camera() : origin(0.0, 0.0, 0.0), direction(0.0, 0.0, 1.0),
-  up(0.0, 1.0, 0.0), fovY(glm::half_pi<float>()),
-  nearPlane(0.1f), farPlane(5000.0f) {
+  up(0.0, 1.0, 0.0), nearPlane(0.1f), farPlane(5000.0f),
+  fovY(glm::half_pi<float>()) {
     LOG_DEBUG("Created camera");
 }
 

@@ -5,6 +5,8 @@
 #include "mesh.hpp"
 #include "window.hpp"
 #include "imgui.hpp"
+#include "effect.hpp"
+#include "postprocess.hpp"
 
 #include <memory>
 #include <mutex>
@@ -52,6 +54,7 @@ private: // stack allocated (default constructor)
 
     // Buffers
     GLuint instanceVBO;
+    GLuint starsVBO;
 
     // Threading
     std::mutex simMutex;
@@ -62,8 +65,12 @@ private: // stack allocated (default constructor)
 
 private: // smart ptrs / heap
     std::shared_ptr<Mesh> cubeMesh;
+    std::shared_ptr<Mesh> starMesh;
     std::shared_ptr<Material> mat;
+
+    std::unique_ptr<PostProcess> postProcess;
 
     std::unique_ptr<std::vector<glm::vec3>> cubePositions;
     std::unique_ptr<std::vector<glm::vec3>> cubeVelocities;
+    std::unique_ptr<std::vector<glm::vec3>> starsPositions;
 };

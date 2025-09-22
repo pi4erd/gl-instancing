@@ -21,7 +21,8 @@ set(SOURCE_FILES src/main.cpp
     src/application.cpp src/material.cpp
     src/window.cpp src/texture.cpp
     src/shader.cpp src/mesh.cpp
-    src/camera.cpp
+    src/camera.cpp src/effect.cpp
+    src/postprocess.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCE_FILES})
@@ -33,6 +34,7 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE fmt
     PRIVATE imgui
 )
+target_compile_options(${PROJECT_NAME} PUBLIC -Wall -Wextra -Wpedantic)
 
 add_custom_target(
     copy_shader_files
@@ -41,10 +43,18 @@ add_custom_target(
     COMMENT "Copying shader directory."
 )
 add_custom_target(
+    compile_shader_files
+    ${CMAKE_SOURCE_DIR}/shadercompile.sh ${CMAKE_BINARY_DIR}/shaders
+    COMMENT "Compiling shaders in directory ${CMAKE_BINARY_DIR}/shaders"
+)
+add_dependencies(compile_shader_files copy_shader_files)
+
+add_custom_target(
     copy_assets
     ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/assets ${CMAKE_BINARY_DIR}/assets
     COMMENT "Copying assets."
 )
-add_dependencies(${PROJECT_NAME} copy_shader_files)
+
+add_dependencies(${PROJECT_NAME} compile_shader_files)
 add_dependencies(${PROJECT_NAME} copy_assets)
