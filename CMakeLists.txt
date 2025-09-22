@@ -9,7 +9,13 @@ find_package(glfw3 REQUIRED)
 find_package(fmt REQUIRED)
 
 # Custom built imgui library
-find_package(imgui REQUIRED)
+include_directories(imgui)
+add_library(imgui SHARED
+    imgui/imgui.cpp imgui/imgui_widgets.cpp imgui/imgui_tables.cpp
+    imgui/imgui_draw.cpp imgui/imgui_demo.cpp
+    imgui/backends/imgui_impl_opengl3.cpp
+    imgui/backends/imgui_impl_glfw.cpp
+)
 
 set(SOURCE_FILES src/main.cpp
     src/application.cpp src/material.cpp
